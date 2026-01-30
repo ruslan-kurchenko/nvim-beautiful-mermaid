@@ -60,6 +60,18 @@ local defaults = {
   cache = {
     max_entries = 200,
   },
+  float = {
+    max_width = nil,
+    max_height = nil,
+    min_width = 40,
+    min_height = 10,
+  },
+  keymaps = {
+    render = "<leader>rr",
+    render_all = "<leader>rR",
+    preview = "<leader>rf",
+    clear = "<leader>rc",
+  },
 }
 
 local function notify(msg)

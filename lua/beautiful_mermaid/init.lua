@@ -114,9 +114,85 @@ function M.export_all(path)
   end
 end
 
+function M.preview_current()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local cfg = M.get_config(bufnr)
+  local block = parser.extract_at_cursor(bufnr, cfg)
+  if not block then
+    vim.notify("No mermaid block under cursor", vim.log.levels.WARN)
+    return
+  end
+  block.bufnr = bufnr
+
+  local float = require("beautiful_mermaid.targets.float")
+  local key = cache.key(block.hash, cfg)
+  local cached = cache.get(key)
+
+  if cached then
+    float.show(block, cached, cfg)
+    return
+  end
+
+  renderer.render_async(block.content, cfg, function(result)
+    if not result.ok then
+      vim.notify(result.error, vim.log.levels.ERROR)
+      return
+    end
+    cache.set(key, result.output, cfg)
+    float.show(block, result.output, cfg)
+  end)
+end
+
+function M.preview_close()
+  local float = require("beautiful_mermaid.targets.float")
+  float.close()
+end
+
+function M.clear_current()
+  local bufnr = vim.api.nvim_get_current_buf()
+  targets.clear(bufnr)
+end
+
+function M.clear_all()
+  local bufnr = vim.api.nvim_get_current_buf()
+  targets.clear(bufnr)
+  M.preview_close()
+end
+
+local function setup_keymaps(cfg)
+  if cfg.keymaps == false then
+    return
+  end
+
+  local keymaps = cfg.keymaps or {}
+  local defaults = {
+    render = "<leader>rr",
+    render_all = "<leader>rR",
+    preview = "<leader>rf",
+    clear = "<leader>rc",
+  }
+
+  local maps = vim.tbl_extend("force", defaults, keymaps)
+  local opts = { noremap = true, silent = true, desc = "Mermaid" }
+
+  if maps.render then
+    vim.keymap.set("n", maps.render, M.render_current, vim.tbl_extend("force", opts, { desc = "Render mermaid block" }))
+  end
+  if maps.render_all then
+    vim.keymap.set("n", maps.render_all, M.render_all, vim.tbl_extend("force", opts, { desc = "Render all mermaid blocks" }))
+  end
+  if maps.preview then
+    vim.keymap.set("n", maps.preview, M.preview_current, vim.tbl_extend("force", opts, { desc = "Preview mermaid in float" }))
+  end
+  if maps.clear then
+    vim.keymap.set("n", maps.clear, M.clear_all, vim.tbl_extend("force", opts, { desc = "Clear mermaid previews" }))
+  end
+end
+
 function M.setup(opts)
   state.config = config.normalize(opts or {})
   setup_highlights()
+  setup_keymaps(state.config)
   cache.clear()
   commands.setup(M)
   require("beautiful_mermaid.lsp").setup(M)
