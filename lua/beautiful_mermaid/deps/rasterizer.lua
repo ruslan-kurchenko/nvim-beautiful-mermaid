@@ -19,17 +19,38 @@ local function find_command(cmd)
   return nil
 end
 
-local function build_args(cmd, svg_path, png_path, dpi)
+local function build_args(cmd, svg_path, png_path, opts)
+  local dpi = opts.dpi or 144
+  local width = opts.width
+  local height = opts.height
+
   if cmd == "resvg" then
-    return { "resvg", svg_path, png_path, "--dpi", tostring(dpi) }
+    local args = { "resvg", svg_path, png_path }
+    if width then
+      table.insert(args, "-w")
+      table.insert(args, tostring(width))
+    else
+      table.insert(args, "--dpi")
+      table.insert(args, tostring(dpi))
+    end
+    return args
   end
   if cmd == "rsvg-convert" then
+    if width and height then
+      return { "rsvg-convert", "-w", tostring(width), "-h", tostring(height), "-a", "-o", png_path, svg_path }
+    end
     return { "rsvg-convert", "-d", tostring(dpi), "-p", tostring(dpi), "-o", png_path, svg_path }
   end
   if cmd == "magick" then
+    if width and height then
+      return { "magick", svg_path, "-resize", width .. "x" .. height, png_path }
+    end
     return { "magick", "-density", tostring(dpi), svg_path, png_path }
   end
   if cmd == "convert" then
+    if width and height then
+      return { "convert", svg_path, "-resize", width .. "x" .. height, png_path }
+    end
     return { "convert", "-density", tostring(dpi), svg_path, png_path }
   end
   return nil
@@ -65,7 +86,7 @@ local function preprocess_svg(svg_path)
   return preprocessed_path
 end
 
-function M.rasterize(svg_path, png_path, cfg)
+function M.rasterize(svg_path, png_path, cfg, size_opts)
   local cmd = find_command(cfg.rasterizer.command)
   if not cmd then
     return false, "no rasterizer command available"
@@ -73,7 +94,13 @@ function M.rasterize(svg_path, png_path, cfg)
 
   local actual_svg = preprocess_svg(svg_path)
 
-  local args = build_args(cmd, actual_svg, png_path, cfg.rasterizer.dpi)
+  local opts = {
+    dpi = cfg.rasterizer.dpi,
+    width = size_opts and size_opts.width,
+    height = size_opts and size_opts.height,
+  }
+
+  local args = build_args(cmd, actual_svg, png_path, opts)
   if not args then
     return false, "failed to build rasterizer args"
   end

@@ -6,8 +6,13 @@ local rasterizer = require("beautiful_mermaid.deps.rasterizer")
 local state = {
   win = nil,
   buf = nil,
-  image_id = nil,
+  current_output = nil,
+  current_cfg = nil,
+  current_size = nil,
+  augroup = nil,
 }
+
+local SCALE_FACTOR = 2
 
 local function cache_dir()
   local dir = vim.fn.stdpath("cache") .. "/beautiful_mermaid"
@@ -17,13 +22,14 @@ local function cache_dir()
   return dir
 end
 
-local function cache_paths(output)
-  local key = vim.fn.sha256(output)
+local function cache_paths(output, width)
+  local content_key = vim.fn.sha256(output)
+  local size_key = width and tostring(width) or "default"
   local dir = cache_dir()
   return {
-    key = key,
-    svg = dir .. "/" .. key .. ".svg",
-    png = dir .. "/" .. key .. ".png",
+    key = content_key .. "-" .. size_key,
+    svg = dir .. "/" .. content_key .. ".svg",
+    png = dir .. "/" .. content_key .. "-" .. size_key .. ".png",
   }
 end
 
@@ -32,8 +38,8 @@ local function ensure_buf()
     return state.buf
   end
   state.buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_option(state.buf, "bufhidden", "wipe")
-  vim.api.nvim_buf_set_option(state.buf, "filetype", "mermaid-preview")
+  vim.bo[state.buf].bufhidden = "wipe"
+  vim.bo[state.buf].filetype = "mermaid-preview"
   return state.buf
 end
 
@@ -59,12 +65,57 @@ local function calculate_dimensions(cfg)
   return { width = width, height = height, row = row, col = col }
 end
 
-local function open_window(buf, cfg)
-  if state.win and vim.api.nvim_win_is_valid(state.win) then
-    return state.win
+local function get_window_inner_size()
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then
+    return nil, nil
+  end
+  local width = vim.api.nvim_win_get_width(state.win)
+  local height = vim.api.nvim_win_get_height(state.win)
+  return width, height
+end
+
+local function estimate_pixel_width(cell_width)
+  return cell_width * 10 * SCALE_FACTOR
+end
+
+local function setup_resize_autocmd()
+  if state.augroup then
+    return
   end
 
+  state.augroup = vim.api.nvim_create_augroup("MermaidFloatResize", { clear = true })
+
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = state.augroup,
+    callback = function()
+      if not M.is_open() then
+        return
+      end
+      M.resize()
+    end,
+  })
+end
+
+local function clear_resize_autocmd()
+  if state.augroup then
+    vim.api.nvim_del_augroup_by_id(state.augroup)
+    state.augroup = nil
+  end
+end
+
+local function open_window(buf, cfg)
   local dims = calculate_dimensions(cfg)
+
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    vim.api.nvim_win_set_config(state.win, {
+      relative = "editor",
+      row = dims.row,
+      col = dims.col,
+      width = dims.width,
+      height = dims.height,
+    })
+    return state.win
+  end
 
   state.win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
@@ -78,10 +129,122 @@ local function open_window(buf, cfg)
     title_pos = "center",
   })
 
-  vim.api.nvim_win_set_option(state.win, "winblend", 0)
-  vim.api.nvim_win_set_option(state.win, "cursorline", false)
+  vim.wo[state.win].winblend = 0
+  vim.wo[state.win].cursorline = false
 
   return state.win
+end
+
+local function clear_current_image()
+  if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+    image_backend.clear(state.buf)
+  end
+end
+
+local function render_image_in_float(png_path)
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then
+    return
+  end
+
+  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
+    return
+  end
+
+  clear_current_image()
+
+  local win_width, _ = get_window_inner_size()
+  if not win_width then
+    return
+  end
+
+  image_backend.render(state.buf, 0, 0, png_path, {
+    id = "mermaid-float-preview",
+    width = win_width,
+    window = state.win,
+    max_width_window_percentage = 100,
+    max_height_window_percentage = 100,
+  })
+end
+
+local function ensure_png_for_size(output, cfg, pixel_width, callback)
+  local paths = cache_paths(output, pixel_width)
+
+  if vim.fn.filereadable(paths.svg) == 0 then
+    local fd = io.open(paths.svg, "w")
+    if fd then
+      fd:write(output)
+      fd:close()
+    end
+  end
+
+  if vim.fn.filereadable(paths.png) == 1 then
+    callback(paths.png)
+    return
+  end
+
+  local ok, err = rasterizer.rasterize(paths.svg, paths.png, cfg, {
+    width = pixel_width,
+  })
+
+  if not ok then
+    vim.notify("Rasterization failed: " .. tostring(err), vim.log.levels.ERROR)
+    return
+  end
+
+  callback(paths.png)
+end
+
+function M.resize()
+  if not M.is_open() then
+    return
+  end
+
+  local cfg = state.current_cfg
+  local output = state.current_output
+  if not cfg or not output then
+    return
+  end
+
+  local dims = calculate_dimensions(cfg)
+  vim.api.nvim_win_set_config(state.win, {
+    relative = "editor",
+    row = dims.row,
+    col = dims.col,
+    width = dims.width,
+    height = dims.height,
+  })
+
+  if cfg.render.format == "ascii" then
+    return
+  end
+
+  local win_width, _ = get_window_inner_size()
+  if not win_width then
+    return
+  end
+
+  local pixel_width = estimate_pixel_width(win_width)
+  local size_key = tostring(pixel_width)
+
+  if state.current_size == size_key then
+    local paths = cache_paths(output, pixel_width)
+    if vim.fn.filereadable(paths.png) == 1 then
+      vim.schedule(function()
+        render_image_in_float(paths.png)
+      end)
+    end
+    return
+  end
+
+  state.current_size = size_key
+
+  vim.schedule(function()
+    ensure_png_for_size(output, cfg, pixel_width, function(png_path)
+      vim.schedule(function()
+        render_image_in_float(png_path)
+      end)
+    end)
+  end)
 end
 
 function M.show(_block, output, cfg)
@@ -89,6 +252,10 @@ function M.show(_block, output, cfg)
 
   local buf = ensure_buf()
   setup_keymaps(buf)
+  setup_resize_autocmd()
+
+  state.current_output = output
+  state.current_cfg = cfg
 
   if cfg.render.format == "ascii" then
     local lines = vim.split(output, "\n")
@@ -108,58 +275,40 @@ function M.show(_block, output, cfg)
     return
   end
 
-  local paths = cache_paths(output)
-
-  if vim.fn.filereadable(paths.svg) == 0 then
-    local fd = io.open(paths.svg, "w")
-    if fd then
-      fd:write(output)
-      fd:close()
-    end
-  end
-
-  if vim.fn.filereadable(paths.png) == 0 then
-    local ok, err = rasterizer.rasterize(paths.svg, paths.png, cfg)
-    if not ok then
-      vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
-        "Rasterization failed: " .. tostring(err),
-        "",
-        "Press 'q' to close.",
-      })
-      open_window(buf, cfg)
-      return
-    end
-  end
-
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
   open_window(buf, cfg)
 
-  vim.schedule(function()
-    if not state.win or not vim.api.nvim_win_is_valid(state.win) then
-      return
-    end
+  local win_width, _ = get_window_inner_size()
+  if not win_width then
+    return
+  end
 
-    state.image_id = "bm-float-" .. paths.key
-    image_backend.render(buf, 1, 0, paths.png, {
-      id = state.image_id,
-      width = cfg.image and cfg.image.max_width,
-      height = cfg.image and cfg.image.max_height,
-    })
+  local pixel_width = estimate_pixel_width(win_width)
+  state.current_size = tostring(pixel_width)
+
+  vim.schedule(function()
+    ensure_png_for_size(output, cfg, pixel_width, function(png_path)
+      vim.schedule(function()
+        render_image_in_float(png_path)
+      end)
+    end)
   end)
 end
 
 function M.close()
-  if state.image_id and state.buf then
-    image_backend.clear(state.buf)
-    state.image_id = nil
-  end
+  clear_current_image()
 
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, true)
   end
 
+  clear_resize_autocmd()
+
   state.win = nil
   state.buf = nil
+  state.current_output = nil
+  state.current_cfg = nil
+  state.current_size = nil
 end
 
 function M.is_open()

@@ -29,7 +29,7 @@ function M.render(bufnr, row, col, path, opts)
     return nil, "image.nvim not available"
   end
 
-  local win = vim.api.nvim_get_current_win()
+  local win = opts.window or vim.api.nvim_get_current_win()
   local images = ensure_buf_state(bufnr)
   local id = opts.id
 
@@ -48,6 +48,8 @@ function M.render(bufnr, row, col, path, opts)
     y = row,
     width = opts.width,
     height = opts.height,
+    max_width_window_percentage = opts.max_width_window_percentage,
+    max_height_window_percentage = opts.max_height_window_percentage,
   })
   image:render()
   images[id] = image
@@ -70,6 +72,15 @@ function M.clear(bufnr, id)
     image:clear()
     images[key] = nil
   end
+end
+
+function M.clear_all_global()
+  local api = get_api()
+  if not api then
+    return
+  end
+  api.clear()
+  state.images = {}
 end
 
 return M
