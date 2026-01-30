@@ -55,10 +55,9 @@ end
 
 function M.key(hash, cfg)
   local fmt = cfg.render.format
-  local target = cfg.render.target
   local theme = cfg.mermaid.theme
   local options = encode_value(cfg.mermaid.options or {})
-  return table.concat({ hash, fmt, target, theme, options }, ":")
+  return table.concat({ hash, fmt, theme, options }, ":")
 end
 
 local function touch(key)

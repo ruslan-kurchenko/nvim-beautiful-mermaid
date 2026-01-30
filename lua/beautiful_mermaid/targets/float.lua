@@ -1,4 +1,5 @@
 local M = {}
+---@diagnostic disable: deprecated, need-check-nil, unused-local
 
 local image_backend = require("beautiful_mermaid.deps.image_backend")
 local rasterizer = require("beautiful_mermaid.deps.rasterizer")
@@ -12,12 +13,23 @@ local state = {
   augroup = nil,
 }
 
+local render_generation = {}
+
+local function next_generation(bufnr)
+  render_generation[bufnr] = (render_generation[bufnr] or 0) + 1
+  return render_generation[bufnr]
+end
+
 local SCALE_FACTOR = 2
 
 local function cache_dir()
   local dir = vim.fn.stdpath("cache") .. "/beautiful_mermaid"
   if vim.fn.isdirectory(dir) == 0 then
-    vim.fn.mkdir(dir, "p")
+    local ok = vim.fn.mkdir(dir, "p")
+    if ok == 0 then
+      vim.notify("beautiful_mermaid: failed to create cache directory: " .. dir, vim.log.levels.ERROR)
+      return nil
+    end
   end
   return dir
 end
@@ -26,6 +38,9 @@ local function cache_paths(output, width)
   local content_key = vim.fn.sha256(output)
   local size_key = width and tostring(width) or "default"
   local dir = cache_dir()
+  if not dir then
+    return nil
+  end
   return {
     key = content_key .. "-" .. size_key,
     svg = dir .. "/" .. content_key .. ".svg",
@@ -168,13 +183,18 @@ end
 
 local function ensure_png_for_size(output, cfg, pixel_width, callback)
   local paths = cache_paths(output, pixel_width)
+  if not paths then
+    return
+  end
 
   if vim.fn.filereadable(paths.svg) == 0 then
-    local fd = io.open(paths.svg, "w")
-    if fd then
-      fd:write(output)
-      fd:close()
+    local fd, err = io.open(paths.svg, "w")
+    if not fd then
+      vim.notify("beautiful_mermaid: failed to write file: " .. tostring(err), vim.log.levels.ERROR)
+      return
     end
+    fd:write(output)
+    fd:close()
   end
 
   if vim.fn.filereadable(paths.png) == 1 then
@@ -182,16 +202,17 @@ local function ensure_png_for_size(output, cfg, pixel_width, callback)
     return
   end
 
-  local ok, err = rasterizer.rasterize(paths.svg, paths.png, cfg, {
+  ---@diagnostic disable-next-line: deprecated
+  rasterizer.rasterize_async(paths.svg, paths.png, cfg, {
     width = pixel_width,
-  })
+  }, function(ok, err)
+    if not ok then
+      vim.notify("Rasterization failed: " .. tostring(err), vim.log.levels.ERROR)
+      return
+    end
 
-  if not ok then
-    vim.notify("Rasterization failed: " .. tostring(err), vim.log.levels.ERROR)
-    return
-  end
-
-  callback(paths.png)
+    callback(paths.png)
+  end)
 end
 
 function M.resize()
@@ -228,9 +249,15 @@ function M.resize()
 
   if state.current_size == size_key then
     local paths = cache_paths(output, pixel_width)
-    if vim.fn.filereadable(paths.png) == 1 then
+    local png_path = paths and paths.png or nil
+    if not png_path then
+      return
+    end
+    ---@diagnostic disable-next-line: need-check-nil
+    if vim.fn.filereadable(png_path) == 1 then
       vim.schedule(function()
-        render_image_in_float(paths.png)
+        ---@diagnostic disable-next-line: need-check-nil
+        render_image_in_float(png_path)
       end)
     end
     return
@@ -238,8 +265,14 @@ function M.resize()
 
   state.current_size = size_key
 
+  local bufnr = state.buf
+  local gen = next_generation(bufnr)
+
   vim.schedule(function()
     ensure_png_for_size(output, cfg, pixel_width, function(png_path)
+      if render_generation[bufnr] ~= gen then
+        return
+      end
       vim.schedule(function()
         render_image_in_float(png_path)
       end)
@@ -247,7 +280,8 @@ function M.resize()
   end)
 end
 
-function M.show(_block, output, cfg)
+---@diagnostic disable-next-line: unused-local
+function M.show(_, output, cfg)
   M.close()
 
   local buf = ensure_buf()
@@ -286,8 +320,14 @@ function M.show(_block, output, cfg)
   local pixel_width = estimate_pixel_width(win_width)
   state.current_size = tostring(pixel_width)
 
+  local bufnr = state.buf
+  local gen = next_generation(bufnr)
+
   vim.schedule(function()
     ensure_png_for_size(output, cfg, pixel_width, function(png_path)
+      if render_generation[bufnr] ~= gen then
+        return
+      end
       vim.schedule(function()
         render_image_in_float(png_path)
       end)

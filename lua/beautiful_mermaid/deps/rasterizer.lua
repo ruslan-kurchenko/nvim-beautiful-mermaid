@@ -86,6 +86,7 @@ local function preprocess_svg(svg_path)
   return preprocessed_path
 end
 
+---@deprecated Use rasterize_async instead.
 function M.rasterize(svg_path, png_path, cfg, size_opts)
   local cmd = find_command(cfg.rasterizer.command)
   if not cmd then
@@ -112,8 +113,80 @@ function M.rasterize(svg_path, png_path, cfg, size_opts)
   return true, nil
 end
 
-function M.available(cfg)
+function M.rasterize_async(svg_path, png_path, cfg, size_opts, callback)
+  local cmd = find_command(cfg.rasterizer.command)
+  if not cmd then
+    callback(false, "no rasterizer command available")
+    return
+  end
+
+  local actual_svg = preprocess_svg(svg_path)
+
+  local opts = {
+    dpi = cfg.rasterizer.dpi,
+    width = size_opts and size_opts.width,
+    height = size_opts and size_opts.height,
+  }
+
+  local args = build_args(cmd, actual_svg, png_path, opts)
+  if not args then
+    callback(false, "failed to build rasterizer args")
+    return
+  end
+
+  local completed = false
+  local timeout_timer
+  local function finalize(ok, err)
+    if completed then
+      return
+    end
+    completed = true
+    if timeout_timer then
+      timeout_timer:stop()
+      timeout_timer:close()
+    end
+    callback(ok, err)
+  end
+
+  local job_id = vim.fn.jobstart(args, {
+    on_exit = function(_, code)
+      if completed then
+        return
+      end
+      if code ~= 0 then
+        finalize(false, "rasterizer exited with code " .. code)
+        return
+      end
+      finalize(true, nil)
+    end,
+  })
+
+  if job_id <= 0 then
+    finalize(false, "failed to start rasterizer job")
+    return
+  end
+
+  local timeout_ms = cfg.rasterizer.timeout_ms or 3000
+  if timeout_ms > 0 then
+    timeout_timer = vim.uv.new_timer()
+    timeout_timer:start(timeout_ms, 0, vim.schedule_wrap(function()
+      if completed then
+        return
+      end
+      if vim.fn.jobwait({ job_id }, 0)[1] == -1 then
+        vim.fn.jobstop(job_id)
+        finalize(false, "rasterizer timeout after " .. timeout_ms .. "ms")
+      end
+    end))
+  end
+end
+
+function M.is_available(cfg)
   return find_command(cfg.rasterizer.command) ~= nil
+end
+
+function M.get_command(cfg)
+  return find_command(cfg.rasterizer.command)
 end
 
 return M

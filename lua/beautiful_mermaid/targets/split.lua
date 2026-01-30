@@ -1,4 +1,5 @@
 local M = {}
+---@diagnostic disable: deprecated
 
 local image_backend = require("beautiful_mermaid.deps.image_backend")
 local rasterizer = require("beautiful_mermaid.deps.rasterizer")
@@ -17,13 +18,24 @@ local state = {
   debounce_timer = nil,
 }
 
+local render_generation = {}
+
+local function next_generation(bufnr)
+  render_generation[bufnr] = (render_generation[bufnr] or 0) + 1
+  return render_generation[bufnr]
+end
+
 local SCALE_FACTOR = 2
 local DEBOUNCE_MS = 500
 
 local function cache_dir()
   local dir = vim.fn.stdpath("cache") .. "/beautiful_mermaid/split"
   if vim.fn.isdirectory(dir) == 0 then
-    vim.fn.mkdir(dir, "p")
+    local ok = vim.fn.mkdir(dir, "p")
+    if ok == 0 then
+      vim.notify("beautiful_mermaid: failed to create cache directory: " .. dir, vim.log.levels.ERROR)
+      return nil
+    end
   end
   return dir
 end
@@ -32,6 +44,9 @@ local function cache_paths(output, width)
   local content_key = vim.fn.sha256(output)
   local size_key = width and tostring(width) or "default"
   local dir = cache_dir()
+  if not dir then
+    return nil
+  end
   return {
     key = content_key .. "-" .. size_key,
     svg = dir .. "/" .. content_key .. ".svg",
@@ -85,13 +100,18 @@ end
 
 local function ensure_png_for_size(output, cfg, pixel_width, callback)
   local paths = cache_paths(output, pixel_width)
+  if not paths then
+    return
+  end
 
   if vim.fn.filereadable(paths.svg) == 0 then
-    local fd = io.open(paths.svg, "w")
-    if fd then
-      fd:write(output)
-      fd:close()
+    local fd, err = io.open(paths.svg, "w")
+    if not fd then
+      vim.notify("beautiful_mermaid: failed to write file: " .. tostring(err), vim.log.levels.ERROR)
+      return
     end
+    fd:write(output)
+    fd:close()
   end
 
   if vim.fn.filereadable(paths.png) == 1 then
@@ -99,16 +119,17 @@ local function ensure_png_for_size(output, cfg, pixel_width, callback)
     return
   end
 
-  local ok, err = rasterizer.rasterize(paths.svg, paths.png, cfg, {
+  ---@diagnostic disable-next-line: deprecated
+  rasterizer.rasterize_async(paths.svg, paths.png, cfg, {
     width = pixel_width,
-  })
+  }, function(ok, err)
+    if not ok then
+      vim.notify("Rasterization failed: " .. tostring(err), vim.log.levels.ERROR)
+      return
+    end
 
-  if not ok then
-    vim.notify("Rasterization failed: " .. tostring(err), vim.log.levels.ERROR)
-    return
-  end
-
-  callback(paths.png)
+    callback(paths.png)
+  end)
 end
 
 local function show_error_in_preview(msg)
@@ -169,7 +190,13 @@ local function render_block_in_split(block, cfg)
     return
   end
 
+  local bufnr = block.bufnr or state.source_buf
+  local gen = next_generation(bufnr)
+
   renderer.render_async(block.content, cfg, function(result)
+    if render_generation[bufnr] ~= gen then
+      return
+    end
     if not result.ok then
       show_error_in_preview(result.error)
       return

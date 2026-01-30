@@ -66,12 +66,17 @@ function M.clear(bufnr, id)
       images[id]:clear()
       images[id] = nil
     end
+    -- Clean up empty table
+    if next(images) == nil then
+      state.images[bufnr] = nil
+    end
     return
   end
   for key, image in pairs(images) do
     image:clear()
     images[key] = nil
   end
+  state.images[bufnr] = nil
 end
 
 function M.clear_all_global()

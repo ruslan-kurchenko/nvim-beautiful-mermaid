@@ -15,6 +15,11 @@ function M.show(block, output, cfg)
 end
 
 function M.show_error(block, message, cfg)
+  local target = cfg.render.target
+  if target == "float" or target == "external" then
+    vim.notify("beautiful_mermaid: " .. tostring(message), vim.log.levels.ERROR)
+    return
+  end
   return in_buffer.show_error(block, message, cfg)
 end
 

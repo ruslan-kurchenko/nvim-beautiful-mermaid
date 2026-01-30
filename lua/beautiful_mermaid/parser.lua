@@ -127,14 +127,66 @@ end
 
 function M.extract_at_cursor(bufnr, cfg)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
+  cfg = cfg or {}
   local row = vim.api.nvim_win_get_cursor(0)[1] - 1
-  local blocks = M.extract(bufnr, cfg)
-  for _, block in ipairs(blocks) do
-    if row >= block.range.start_row and row <= block.range.end_row then
-      return block
+
+  if cfg.treesitter and cfg.treesitter.enable then
+    local blocks = M.extract(bufnr, cfg)
+    for _, block in ipairs(blocks) do
+      if row >= block.range.start_row and row <= block.range.end_row then
+        return block
+      end
+    end
+    return nil
+  end
+
+  if not (cfg.markdown and cfg.markdown.enabled) then
+    return nil
+  end
+
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local fence = cfg.markdown.fence or "mermaid"
+
+  local start_row = nil
+  for i = row, 0, -1 do
+    local line = lines[i + 1]
+    if line:match("^```%s*" .. fence .. "%s*$") then
+      start_row = i
+      break
+    elseif line:match("^```%s*$") and i < row then
+      return nil
     end
   end
-  return nil
+
+  if not start_row then
+    return nil
+  end
+
+  local end_row = nil
+  local content_lines = {}
+  for i = start_row + 1, #lines - 1 do
+    local line = lines[i + 1]
+    if line:match("^```%s*$") then
+      end_row = i
+      break
+    end
+    table.insert(content_lines, line)
+  end
+
+  if not end_row then
+    return nil
+  end
+  if row < start_row or row > end_row then
+    return nil
+  end
+
+  local content = table.concat(content_lines, "\n")
+  return {
+    content = content,
+    range = { start_row = start_row, end_row = end_row },
+    hash = hash_text(content),
+    filetype = vim.bo[bufnr].filetype,
+  }
 end
 
 return M

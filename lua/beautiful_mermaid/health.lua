@@ -40,8 +40,13 @@ function M.check()
     else
       health.warn("image.nvim not available; inline svg will fall back to placeholder")
     end
-    if rasterizer.available(cfg) then
-      health.ok("rasterizer available")
+    if rasterizer.is_available(cfg) then
+      local rast_cmd = rasterizer.get_command(cfg)
+      if rast_cmd == "magick" or rast_cmd == "convert" then
+        health.warn("ImageMagick rasterizer has known SVG vulnerabilities; consider installing resvg")
+      else
+        health.ok("rasterizer available (" .. rast_cmd .. ")")
+      end
     else
       health.warn("rasterizer not available (resvg/rsvg-convert/magick/convert)")
     end

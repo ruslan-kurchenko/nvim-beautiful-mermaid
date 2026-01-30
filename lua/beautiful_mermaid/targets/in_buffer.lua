@@ -1,4 +1,5 @@
 local M = {}
+---@diagnostic disable: deprecated, unused-local
 
 local namespace = vim.api.nvim_create_namespace("beautiful_mermaid")
 local image_backend = require("beautiful_mermaid.deps.image_backend")
@@ -14,7 +15,11 @@ end
 local function cache_dir()
   local dir = vim.fn.stdpath("cache") .. "/beautiful_mermaid"
   if vim.fn.isdirectory(dir) == 0 then
-    vim.fn.mkdir(dir, "p")
+    local ok = vim.fn.mkdir(dir, "p")
+    if ok == 0 then
+      vim.notify("beautiful_mermaid: failed to create cache directory: " .. dir, vim.log.levels.ERROR)
+      return nil
+    end
   end
   return dir
 end
@@ -22,6 +27,9 @@ end
 local function cache_paths(block, svg_output)
   local key = vim.fn.sha256(svg_output .. ":" .. block.hash .. ":" .. tostring(block.range.start_row))
   local dir = cache_dir()
+  if not dir then
+    return nil
+  end
   return {
     key = key,
     svg = dir .. "/" .. key .. ".svg",
@@ -39,9 +47,14 @@ local function can_render_image(cfg)
   return image_backend.is_available()
 end
 
+local function block_id(bufnr, start_row)
+  return "bm-" .. bufnr .. "-" .. start_row
+end
+
 function M.show(block, output, cfg)
   local bufnr = block.bufnr or vim.api.nvim_get_current_buf()
   local row = block.range.end_row
+  local id = block_id(bufnr, block.range.start_row)
   local line_count = vim.api.nvim_buf_line_count(bufnr)
   if row >= line_count then
     row = line_count - 1
@@ -49,7 +62,7 @@ function M.show(block, output, cfg)
   if row < 0 then
     row = 0
   end
-  M.clear(bufnr, block.range.start_row, block.range.end_row)
+  M.clear(bufnr, block.range.start_row, block.range.end_row, id)
   local virt = {}
   if cfg.render.format == "ascii" then
     local lines = vim.split(output, "\n", { plain = true })
@@ -61,31 +74,38 @@ function M.show(block, output, cfg)
   else
     if can_render_image(cfg) then
       local paths = cache_paths(block, output)
-      if vim.fn.filereadable(paths.svg) == 0 then
-        local fd = io.open(paths.svg, "w")
-        if fd then
+      if not paths then
+        virt = { { { placeholder(cfg), "MermaidPlaceholder" } } }
+      else
+        if vim.fn.filereadable(paths.svg) == 0 then
+          local fd, err = io.open(paths.svg, "w")
+          if not fd then
+            vim.notify("beautiful_mermaid: failed to write file: " .. tostring(err), vim.log.levels.ERROR)
+            return
+          end
           fd:write(output)
           fd:close()
         end
-      end
-      if vim.fn.filereadable(paths.png) == 0 then
-        local ok, err = rasterizer.rasterize(paths.svg, paths.png, cfg)
-        if not ok then
-          virt = { { { "[mermaid error] " .. err, "MermaidError" } } }
+        if vim.fn.filereadable(paths.png) == 0 then
+          ---@diagnostic disable-next-line: deprecated
+          local ok, err = rasterizer.rasterize(paths.svg, paths.png, cfg)
+          if not ok then
+            virt = { { { "[mermaid error] " .. err, "MermaidError" } } }
+          end
         end
-      end
-      if vim.fn.filereadable(paths.png) == 1 then
-        image_backend.render(bufnr, row + 1, 0, paths.png, {
-          id = "bm-" .. paths.key,
-          width = cfg.image.max_width,
-          height = cfg.image.max_height,
-        })
-        local padding = math.max(1, cfg.image.padding_rows)
-        local blanks = {}
-        for _ = 1, padding do
-          table.insert(blanks, { { "", "MermaidPlaceholder" } })
+        if vim.fn.filereadable(paths.png) == 1 then
+          image_backend.render(bufnr, row + 1, 0, paths.png, {
+            id = id,
+            width = cfg.image.max_width,
+            height = cfg.image.max_height,
+          })
+          local padding = math.max(1, cfg.image.padding_rows)
+          local blanks = {}
+          for _ = 1, padding do
+            table.insert(blanks, { { "", "MermaidPlaceholder" } })
+          end
+          virt = blanks
         end
-        virt = blanks
       end
     end
 
@@ -101,14 +121,19 @@ function M.show(block, output, cfg)
   })
 end
 
-function M.show_error(block, message, _cfg)
+---@diagnostic disable-next-line: unused-local
+function M.show_error(block, message, cfg)
   local msg = tostring(message or "")
   if msg == "" then
     msg = "unknown error (run :MermaidCheckHealth)"
   end
+  if cfg then
+    placeholder(cfg)
+  end
   local bufnr = block.bufnr or vim.api.nvim_get_current_buf()
   local row = block.range.end_row
-  M.clear(bufnr, block.range.start_row, block.range.end_row)
+  local id = block_id(bufnr, block.range.start_row)
+  M.clear(bufnr, block.range.start_row, block.range.end_row, id)
   vim.api.nvim_buf_set_extmark(bufnr, namespace, row, 0, {
     virt_lines = { { { "[mermaid error] " .. msg, "MermaidError" } } },
     virt_lines_above = false,
@@ -116,8 +141,12 @@ function M.show_error(block, message, _cfg)
   })
 end
 
-function M.clear(bufnr, start_row, end_row)
-  image_backend.clear(bufnr)
+function M.clear(bufnr, start_row, end_row, id)
+  if id then
+    image_backend.clear(bufnr, id)
+  else
+    image_backend.clear(bufnr)
+  end
   if start_row and end_row then
     vim.api.nvim_buf_clear_namespace(bufnr, namespace, start_row, end_row + 1)
   else

@@ -1,5 +1,7 @@
 local M = {}
 
+local cached_auto_backend = nil
+
 local defaults = {
   render = {
     target = "in_buffer",
@@ -104,18 +106,21 @@ function M.normalize(user_opts)
   end
 
   if cfg.render.backend == "auto" then
-    local terminal = require("beautiful_mermaid.terminal")
-    local app = terminal.detect()
-    if terminal.supports_kitty_graphics(app) then
-      cfg.render.backend = "image"
-      cfg.render.format = "svg"
-    elseif app == "alacritty" and cfg.external.command ~= "" then
-      cfg.render.backend = "external"
-      cfg.render.target = "external"
-      cfg.render.format = "svg"
-    else
-      cfg.render.backend = "ascii"
-      cfg.render.format = "ascii"
+    if not cached_auto_backend then
+      local terminal = require("beautiful_mermaid.terminal")
+      local app = terminal.detect()
+      if terminal.supports_kitty_graphics(app) then
+        cached_auto_backend = { backend = "image", format = "svg", target = nil }
+      elseif app == "alacritty" and cfg.external.command ~= "" then
+        cached_auto_backend = { backend = "external", format = "svg", target = "external" }
+      else
+        cached_auto_backend = { backend = "ascii", format = "ascii", target = nil }
+      end
+    end
+    cfg.render.backend = cached_auto_backend.backend
+    cfg.render.format = cached_auto_backend.format
+    if cached_auto_backend.target then
+      cfg.render.target = cached_auto_backend.target
     end
   end
 

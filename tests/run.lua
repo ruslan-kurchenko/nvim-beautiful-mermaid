@@ -12,8 +12,8 @@ end
 local function test_config_defaults()
   local cfg = config.normalize({})
   assert_eq(cfg.render.target, "in_buffer", "default target")
-  assert_eq(cfg.render.format, "ascii", "default format")
-  assert_eq(cfg.render.backend, "auto", "default backend")
+  local valid_backends = { image = true, ascii = true, external = true }
+  assert_eq(valid_backends[cfg.render.backend] ~= nil, true, "backend auto-detected to valid value")
 end
 
 local function test_parser_markdown()

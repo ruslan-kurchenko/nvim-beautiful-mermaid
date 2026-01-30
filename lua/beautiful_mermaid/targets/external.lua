@@ -1,4 +1,5 @@
 local M = {}
+---@diagnostic disable: unused-local
 
 local function ext_for_format(format)
   return format == "ascii" and "txt" or "svg"
@@ -7,8 +8,9 @@ end
 local function write_temp(output, format)
   local ext = ext_for_format(format)
   local path = vim.fn.tempname() .. "." .. ext
-  local fd = io.open(path, "w")
+  local fd, err = io.open(path, "w")
   if not fd then
+    vim.notify("beautiful_mermaid: failed to write file: " .. tostring(err), vim.log.levels.ERROR)
     return nil
   end
   fd:write(output)
@@ -28,6 +30,7 @@ function M.build_export_path(base_path, index, format)
   return root .. "-" .. tostring(index) .. "." .. ext
 end
 
+---@diagnostic disable-next-line: unused-local
 function M.show(_block, output, cfg)
   local path = write_temp(output, cfg.render.format)
   if not path then
@@ -46,9 +49,9 @@ function M.export_output(output, cfg, path)
   if not out_path or out_path == "" then
     out_path = write_temp(output, cfg.render.format)
   else
-    local fd = io.open(out_path, "w")
+    local fd, err = io.open(out_path, "w")
     if not fd then
-      vim.notify("beautiful_mermaid: failed to write export file", vim.log.levels.ERROR)
+      vim.notify("beautiful_mermaid: failed to write file: " .. tostring(err), vim.log.levels.ERROR)
       return
     end
     fd:write(output)

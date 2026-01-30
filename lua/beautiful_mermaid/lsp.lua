@@ -16,9 +16,9 @@ function M.setup(api)
       if not client or client.name ~= cfg.lsp.server then
         return
       end
-      if cfg.render.live then
-        api.render_all()
-      end
+       if cfg.render.live then
+         api.render_all(bufnr)
+       end
     end,
   })
 end
