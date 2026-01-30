@@ -1,269 +1,179 @@
 # nvim-beautiful-mermaid Architecture
 
-## Purpose
-Provide a Neovim plugin that renders Mermaid diagrams using Beautiful Mermaid. Primary render target is in-buffer (starting with markdown code fences) with configurable targets for floating windows or external viewers. Scope includes live preview, export, LSP integration, and Treesitter integration.
+Developer reference for the plugin architecture and module structure.
 
-## Goals
-- Neovim >=0.9 support.
-- In-buffer rendering as default target; allow switching to floating window or external viewer.
-- First-class support for Mermaid fenced blocks in markdown; design for future non-markdown sources.
-- Async, non-blocking rendering pipeline.
-- Clear configuration schema and predictable behavior.
-- Minimal dependencies; reuse Beautiful Mermaid library.
+## Overview
 
-## Non-Goals
-- Full markdown parser implementation in Lua.
-- Immediate support for every filetype beyond markdown (planned expansion).
-- Built-in Mermaid language server implementation (integration only).
+This plugin renders Mermaid diagrams inline in Neovim using:
+- **Beautiful Mermaid** library for SVG/ASCII generation
+- **image.nvim** for inline image display
+- **resvg** (or alternatives) for SVG-to-PNG rasterization
 
-## External Dependencies
-- Beautiful Mermaid library:
-  - renderMermaid(text, options?) -> Promise<string> (SVG)
-  - renderMermaidAscii(text, options?)
-  - Options include colors, font, spacing, padding, transparent background
-- Neovim runtime:
-  - job control, timers (vim.uv), extmarks, virtual text, autocmds
+## Module Layout
 
-## High-Level Architecture
-
-### Components
-- Core: plugin entry and configuration management
-- Parser: extracts Mermaid blocks from buffers (markdown fences first)
-- Renderer: bridges to Beautiful Mermaid (Node/Bun process)
-- Targets: render output into buffer, float, or external viewer
-- Cache: memoizes render results keyed by content + options
-- Integrations: Treesitter injection, LSP wiring, health checks
-
-### Data Flow (Render Pipeline)
-1. Detect Mermaid blocks in buffer (markdown fence, Treesitter or regex fallback)
-2. Normalize content (strip fence, trim, ensure "mermaid" header if required)
-3. Build render request (content + render options)
-4. Check cache (hash of content + options + target)
-5. If miss, dispatch async job to renderer (Node/Bun)
-6. Receive SVG (or ASCII) result
-7. Update target (in-buffer virtual text/extmark overlay or float/external)
-8. Store cache entry
-
-## Module Layout (Proposed)
-- lua/beautiful_mermaid/init.lua
-- lua/beautiful_mermaid/config.lua
-- lua/beautiful_mermaid/parser.lua
-- lua/beautiful_mermaid/renderer.lua
-- lua/beautiful_mermaid/targets/in_buffer.lua
-- lua/beautiful_mermaid/targets/float.lua
-- lua/beautiful_mermaid/targets/external.lua
-- lua/beautiful_mermaid/cache.lua
-- lua/beautiful_mermaid/health.lua
-- plugin/beautiful_mermaid.lua (autoload entrypoint)
-- doc/beautiful-mermaid.txt (help file, later)
-- docs/architecture.md (this document)
-
-## Configuration Schema (Draft)
-```lua
-require("beautiful_mermaid").setup({
-  render = {
-    target = "in_buffer", -- in_buffer | float | external
-    format = "svg", -- svg | ascii
-    live = true,
-    debounce_ms = 200,
-  },
-  mermaid = {
-    theme = "default", -- maps to Beautiful Mermaid theme
-    options = {
-      bg = nil,
-      fg = nil,
-      line = nil,
-      accent = nil,
-      muted = nil,
-      surface = nil,
-      border = nil,
-      font = nil,
-      padding = 8,
-      nodeSpacing = 30,
-      layerSpacing = 40,
-      transparent = false,
-    },
-  },
-  markdown = {
-    enabled = true,
-    fence = "mermaid",
-  },
-  external = {
-    command = "", -- user-provided viewer command
-  },
-  lsp = {
-    enable = true,
-    server = "mermaid", -- depends on user LSP config
-  },
-  treesitter = {
-    enable = true,
-    injection_lang = "mermaid",
-  },
-})
+```
+lua/beautiful_mermaid/
+  init.lua              # Main API, setup(), keymaps
+  config.lua            # Configuration schema and normalization
+  commands.lua          # User command registration
+  parser.lua            # Mermaid block extraction (Treesitter + regex)
+  cache.lua             # Render result caching
+  live.lua              # Live preview autocmds
+  lsp.lua               # LSP integration helpers
+  health.lua            # :checkhealth module
+  terminal.lua          # Terminal detection (Kitty graphics support)
+  deps/
+    renderer.lua        # Beautiful Mermaid bridge (Bun process)
+    rasterizer.lua      # SVG to PNG conversion
+    image_backend.lua   # image.nvim wrapper
+  targets/
+    init.lua            # Target dispatcher
+    in_buffer.lua       # Inline extmark rendering
+    float.lua           # Floating window preview
+    split.lua           # Side-by-side live preview
+    external.lua        # External viewer + export
+scripts/
+  render-mermaid.js     # Bun script for Beautiful Mermaid
+  preprocess-svg.js     # SVG post-processing (arrow visibility)
+  vendor/
+    beautiful-mermaid.bundle.cjs  # Bundled Beautiful Mermaid
+plugin/
+  beautiful_mermaid.lua # Autoload entrypoint
 ```
 
-## Rendering Targets
+## Data Flow
 
-### In-Buffer (Primary)
-- Use extmarks + virtual text or concealed lines to show a preview placeholder.
-- For SVG, store in buffer-local cache and render via image backend in a later phase.
-- For ASCII, replace/overlay content directly in buffer.
-- Keep original Mermaid fenced block intact to avoid destructive edits.
+### Render Pipeline
 
-### Floating Window
-- Render SVG or ASCII into a dedicated floating window.
-- Sync float with cursor or block bounds.
+```
+1. Detect mermaid blocks (parser.lua)
+   - Treesitter query for markdown fences
+   - Regex fallback if Treesitter unavailable
 
-### External Viewer
-- Write SVG to temp file and open with user command.
-- Support manual refresh and auto-refresh.
+2. Check cache (cache.lua)
+   - Key = hash(content + options + format)
+   - Return cached result if available
 
-## Parser Strategy
-- Primary: Treesitter injection for markdown and mermaid fences.
-- Fallback: regex-based fence detection.
-- Initial scope: markdown fenced code blocks with "mermaid" tag.
-- Future: allow non-markdown buffers via user-defined regex or Treesitter queries.
+3. Render via Bun process (deps/renderer.lua)
+   - Spawn: bun scripts/render-mermaid.js
+   - Input: JSON { text, options, format }
+   - Output: JSON { svg, error }
 
-## Live Preview
-- Autocmds on TextChanged, TextChangedI, BufEnter, BufWritePost.
-- Debounce using vim.uv timer to avoid rapid re-renders.
-- Only re-render blocks that changed (track extmark ranges + hashes).
+4. Post-process SVG (scripts/preprocess-svg.js)
+   - Increase stroke widths for visibility
+   - Enlarge arrowheads
 
-## Export
-- Export current block or all blocks.
-- Formats: SVG (default), ASCII.
-- Output: write to file path chosen by user.
+5. Rasterize to PNG (deps/rasterizer.lua)
+   - resvg, rsvg-convert, or ImageMagick
+   - Optional: custom width/height for sizing
 
-## LSP Integration
-- Provide optional helpers for mermaid LSP setup (no built-in server).
-- Respect user LSP config and allow opt-out.
-- Use buffer-local commands or autocmds to toggle preview based on LSP attach.
+6. Display via image.nvim (deps/image_backend.lua)
+   - Kitty graphics protocol
+   - Extmark positioning
 
-## Treesitter Integration
-- Recommend installation of tree-sitter-mermaid grammar.
-- Support markdown injections for mermaid fences.
-- Use Treesitter queries to locate fenced blocks reliably.
+7. Cache result (cache.lua)
+```
 
-## Health Checks
-- :checkhealth integration via lua/beautiful_mermaid/health.lua.
-- Validate:
-  - Neovim version >=0.9
-  - Node/Bun availability for renderer
-  - tree-sitter-mermaid present (if enabled)
-  - External viewer command (if configured)
+### Target Types
+
+| Target | Module | Description |
+|--------|--------|-------------|
+| `in_buffer` | `targets/in_buffer.lua` | Renders image at block location using extmarks |
+| `float` | `targets/float.lua` | Shows diagram in floating window |
+| `split` | `targets/split.lua` | Side-by-side live editing view |
+| `external` | `targets/external.lua` | Opens in external viewer or exports to file |
+
+## Key Modules
+
+### config.lua
+
+- Defines default configuration schema
+- Validates and normalizes user options
+- Auto-detects terminal capabilities (`render.backend = "auto"`)
+- Supports per-buffer config overrides
+
+### parser.lua
+
+- Extracts mermaid fenced code blocks from markdown
+- Primary: Treesitter query for `fenced_code_block` with mermaid info string
+- Fallback: Regex pattern matching
+- Returns: `{ content, start_row, end_row, hash }`
+
+### deps/renderer.lua
+
+- Manages Bun subprocess for Beautiful Mermaid
+- JSON protocol: request/response over stdin/stdout
+- Async rendering with callback
+- Timeout handling and error propagation
+
+### deps/rasterizer.lua
+
+- Converts SVG to PNG for image.nvim display
+- Auto-detects available tool: resvg > rsvg-convert > magick
+- Supports custom DPI and dimensions
+- Synchronous (blocking) - runs via `vim.fn.system()`
+
+### deps/image_backend.lua
+
+- Wrapper around image.nvim API
+- Handles image creation, positioning, clearing
+- Manages image lifecycle tied to buffer/window
+
+### targets/split.lua
+
+- Creates vertical split with preview buffer
+- Tracks source buffer cursor position
+- Debounced updates (500ms) on text/cursor change
+- Auto-closes when source buffer is wiped
+
+## Configuration Flow
+
+```lua
+setup(user_opts)
+  |
+  v
+config.normalize(user_opts)
+  |-- Merge with defaults
+  |-- Validate enums (target, format, backend)
+  |-- Auto-detect backend if "auto"
+  |-- Validate numeric fields
+  v
+state.config = normalized_config
+  |
+  v
+setup_highlights()    -- MermaidPreview, MermaidError, MermaidPlaceholder
+setup_keymaps()       -- Register key mappings
+commands.setup()      -- Register user commands
+lsp.setup()           -- LSP integration (optional)
+live.enable/disable() -- Live preview autocmds
+```
 
 ## Error Handling
-- Surface renderer failures as notifications with actionable messages.
-- Keep stale render output if new render fails.
-- Avoid hard failure on missing Treesitter; fallback to regex.
 
-## Caching
-- Cache key = hash(mermaid_text + render_options + target + format).
-- Buffer-local cache for speed; global LRU optional for reuse across buffers.
-- Invalidate cache on config changes or theme changes.
+- **Renderer failures**: Surfaced via `vim.notify()`, cached stale output preserved
+- **Rasterizer failures**: Error shown in preview, fallback to placeholder
+- **Missing dependencies**: Detected by `:checkhealth`, graceful degradation
+- **Treesitter unavailable**: Falls back to regex parsing
 
-## Async Job Strategy
-- Renderer runs as external process (bun) to call Beautiful Mermaid.
-- Use jobstart + stdin/stdout JSON protocol:
-  - Request: { text, options, format }
-  - Response: { svg, error }
-- Enforce timeout and size limits to prevent hanging jobs.
-- Keep renderer process warm if possible; restart on crash.
+## Caching Strategy
 
-## Implementation Plan
+- **Key generation**: SHA256 hash of content + render options
+- **Buffer-local storage**: Tied to buffer lifecycle
+- **Size limit**: Configurable `cache.max_entries` (default 200)
+- **Invalidation**: On config changes or explicit clear
 
-### Phase 0: Codebase Analysis
-- Audit existing files and conventions (repo is currently empty).
-- Confirm Neovim version and available runtime dependencies.
-- Acceptance: architecture doc aligns with confirmed requirements.
+## External Dependencies
 
-### Phase 1: Skeleton + Configuration
-- Create module layout and entrypoints.
-- Implement setup() with config schema and defaults.
-- Acceptance: plugin loads without errors and exposes setup.
-- Verification: :checkhealth reports expected checks (even if they fail gracefully).
-
-### Phase 2: Parser + Renderer Bridge
-- Markdown fence extraction (regex fallback).
-- Renderer job protocol and process management.
-- Acceptance: rendering a sample block returns SVG text.
-- Verification: run a minimal buffer test and confirm output.
-
-### Phase 3: In-Buffer Target + Live Preview
-- Extmarks and buffer overlays.
-- Debounced autocmds and incremental updates.
-- Acceptance: editing a Mermaid block updates preview in <= 300ms.
-- Verification: manual edit and observe update without blocking input.
-
-### Phase 4: Export + External Targets
-- Implement float and external viewer.
-- Export current or all blocks.
-- Acceptance: exported SVG writes to file and opens in viewer.
-
-### Phase 5: LSP + Treesitter Integration
-- Treesitter queries for markdown injection.
-- Optional LSP helpers and on_attach integration.
-- Acceptance: Treesitter detects blocks; LSP helper does not conflict with user config.
-
-### Phase 6: Docs + Tests
-- README usage and examples.
-- Minimal tests for parser and renderer protocol.
-- Acceptance: documented install steps for lazy.nvim, packer.nvim, vim-plug, rocks.nvim.
-
-## Plugin Manager Installation
-
-### lazy.nvim
-```lua
-{
-  "yourname/nvim-beautiful-mermaid",
-  opts = {},
-}
-```
-
-### packer.nvim
-```lua
-use({
-  "yourname/nvim-beautiful-mermaid",
-  config = function()
-    require("beautiful_mermaid").setup({})
-  end,
-})
-```
-
-### vim-plug
-```vim
-Plug 'yourname/nvim-beautiful-mermaid'
-lua << EOF
-require("beautiful_mermaid").setup({})
-EOF
-```
-
-### rocks.nvim
-```lua
-require("rocks").setup({
-  rocks = {
-    "nvim-beautiful-mermaid",
-  },
-})
-```
-
-## Verification Checklist
-- Neovim >=0.9 detected
-- Renderer process available (bun)
-- Markdown fence parsing works for mermaid blocks
-- In-buffer rendering does not modify source text
-- Live preview is debounced and non-blocking
-- Export writes SVG successfully
-- Treesitter integration optional and safe
-- LSP integration optional and safe
+| Dependency | Purpose | Required |
+|------------|---------|----------|
+| Bun | JavaScript runtime for Beautiful Mermaid | Yes |
+| image.nvim | Inline image display | Yes (for SVG) |
+| resvg/rsvg-convert/magick | SVG rasterization | Yes (for SVG) |
+| Treesitter (mermaid) | Block detection | No (regex fallback) |
 
 ## References
-- Neovim health: https://neovim.io/doc/user/health.html
-- Neovim job control: https://neovim.io/doc/user/job_control.html
-- Neovim API/extmarks: https://neovim.io/doc/user/api.html
-- Neovim Treesitter: https://neovim.io/doc/user/treesitter.html
-- lazy.nvim spec: https://lazy.folke.io/spec
-- vim-plug: https://junegunn.github.io/vim-plug/getting-started
-- rocks.nvim: https://github.com/lumen-oss/rocks.nvim
-- tree-sitter-mermaid: https://github.com/monaqa/tree-sitter-mermaid
-- nvim-treesitter markdown injections: https://github.com/nvim-treesitter/nvim-treesitter/blob/master/queries/markdown/injections.scm
+
+- [Neovim API](https://neovim.io/doc/user/api.html)
+- [image.nvim](https://github.com/3rd/image.nvim)
+- [Beautiful Mermaid](https://github.com/lukilabs/beautiful-mermaid)
+- [Kitty Graphics Protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/)

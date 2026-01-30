@@ -40,6 +40,10 @@ function M.setup(api)
   vim.api.nvim_create_user_command("MermaidSplitToggle", function()
     api.split_toggle()
   end, { desc = "Toggle split preview" })
+
+  vim.api.nvim_create_user_command("MermaidCheckHealth", function()
+    vim.cmd("checkhealth beautiful_mermaid")
+  end, { desc = "Check plugin dependencies" })
 end
 
 return M

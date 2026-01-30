@@ -2,12 +2,15 @@
 
 Neovim plugin to render Mermaid diagrams inline using Beautiful Mermaid and image.nvim.
 
-![Mermaid diagram rendered inline in Neovim](https://github.com/user-attachments/assets/placeholder.png)
+![Split preview with nested subgraphs diagram](assets/split-preview-subgraphs.png)
+
+![Split preview with decision tree diagram](assets/split-preview-decision-tree.png)
 
 ## Features
 
 - **Inline rendering** - Diagrams render directly in your buffer
 - **Floating preview** - Pop-up preview window for quick diagram viewing
+- **Split preview** - Live-updating side-by-side preview while editing
 - **SVG + ASCII support** - High-quality SVG images or ASCII fallback
 - **Live updates** - Diagrams re-render as you type (configurable)
 - **Tmux compatible** - Works inside tmux with proper configuration
@@ -39,7 +42,7 @@ cargo install resvg       # or via Rust
 
 ```lua
 {
-  "yourname/nvim-beautiful-mermaid",
+  "ruslan-kurchenko/nvim-beautiful-mermaid",
   dependencies = { "3rd/image.nvim" },
   config = function()
     require("image").setup({
@@ -58,7 +61,7 @@ cargo install resvg       # or via Rust
 
 ```lua
 use({
-  "yourname/nvim-beautiful-mermaid",
+  "ruslan-kurchenko/nvim-beautiful-mermaid",
   requires = { "3rd/image.nvim" },
   config = function()
     require("image").setup({
@@ -77,7 +80,7 @@ use({
 
 ```vim
 Plug '3rd/image.nvim'
-Plug 'yourname/nvim-beautiful-mermaid'
+Plug 'ruslan-kurchenko/nvim-beautiful-mermaid'
 
 lua << EOF
 require("image").setup({
@@ -99,6 +102,9 @@ EOF
 | `:MermaidRenderAll` | Render all mermaid blocks in buffer |
 | `:MermaidPreview` | Show diagram in floating window |
 | `:MermaidPreviewClose` | Close the floating preview |
+| `:MermaidSplit` | Open split preview for live editing |
+| `:MermaidSplitClose` | Close the split preview |
+| `:MermaidSplitToggle` | Toggle split preview |
 | `:MermaidClear` | Clear all rendered diagrams |
 | `:MermaidExport [path]` | Export current block to file |
 | `:MermaidExportAll [path]` | Export all blocks to files |
@@ -113,6 +119,7 @@ Default keymaps (all configurable):
 | `<leader>rr` | `render` | Render mermaid block under cursor |
 | `<leader>rR` | `render_all` | Render all mermaid blocks |
 | `<leader>rf` | `preview` | Preview in floating window |
+| `<leader>rs` | `split` | Toggle split preview |
 | `<leader>rc` | `clear` | Clear all previews |
 
 ### Customizing keymaps
@@ -123,6 +130,7 @@ require("beautiful_mermaid").setup({
     render = "<leader>mr",      -- Custom keymap
     render_all = "<leader>mR",
     preview = "<leader>mp",
+    split = "<leader>ms",
     clear = "<leader>mc",
   },
 })
@@ -144,6 +152,7 @@ require("beautiful_mermaid").setup({
     render = "<leader>rr",
     render_all = false,  -- Disable this specific keymap
     preview = "<leader>rf",
+    split = false,
     clear = false,
   },
 })
@@ -226,6 +235,7 @@ require("beautiful_mermaid").setup({
     render = "<leader>rr",
     render_all = "<leader>rR",
     preview = "<leader>rf",
+    split = "<leader>rs",
     clear = "<leader>rc",
   },
 })
@@ -258,6 +268,25 @@ require("beautiful_mermaid").setup({
 ```
 
 **Note:** The font must be installed on your system. For Nerd Fonts, use the base family name without weight suffixes (e.g., `"CaskaydiaMono NFP"` not `"CaskaydiaMono NFP SemiLight"`).
+
+## Split Preview
+
+The split preview provides a live-updating side-by-side view for editing Mermaid diagrams.
+
+### Usage
+
+1. Open a markdown file with mermaid blocks
+2. Run `:MermaidSplit` or press `<leader>rs`
+3. Move cursor to a mermaid block - the preview updates automatically
+4. Edit the diagram - changes reflect after a 500ms debounce
+5. Close with `:MermaidSplitClose` or `<leader>rs` (toggle)
+
+### Features
+
+- **Live updates**: Preview refreshes as you type (debounced)
+- **Cursor tracking**: Shows the diagram under your cursor
+- **Auto-cleanup**: Closes gracefully when source buffer is closed
+- **Responsive sizing**: Adapts to window resize events
 
 ## Highlight Groups
 
@@ -316,7 +345,7 @@ require("image").setup({
 
 ```lua
 {
-  "yourname/nvim-beautiful-mermaid",
+  "ruslan-kurchenko/nvim-beautiful-mermaid",
   dependencies = { "3rd/image.nvim" },
   config = function()
     require("image").setup({
@@ -375,6 +404,10 @@ Export diagrams to files:
 ## Health Check
 
 Run `:MermaidCheckHealth` or `:checkhealth beautiful_mermaid` to verify dependencies.
+
+## Acknowledgments
+
+This plugin is built on top of [Beautiful Mermaid](https://github.com/lukilabs/beautiful-mermaid) by [Luki Labs](https://github.com/lukilabs). Huge thanks to the Beautiful Mermaid team for creating such an elegant library for rendering Mermaid diagrams with customizable themes and styling options.
 
 ## License
 
