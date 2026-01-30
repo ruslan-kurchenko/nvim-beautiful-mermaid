@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+*.log
+*.tmp
+
+# Cache directories
+.cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Neovim
+.netrwhist
+
+# Lua
+*.luac
+luac.out
+
+# Test output
+coverage/
+.coverage
+
+# Sisyphus working directory
+.sisyphus/
+
+# Local development
+.env
+.env.local
