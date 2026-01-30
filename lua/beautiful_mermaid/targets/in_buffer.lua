@@ -101,7 +101,7 @@ function M.show(block, output, cfg)
   })
 end
 
-function M.show_error(block, message, cfg)
+function M.show_error(block, message, _cfg)
   local msg = tostring(message or "")
   if msg == "" then
     msg = "unknown error (run :MermaidCheckHealth)"
