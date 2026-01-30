@@ -1,0 +1,11 @@
+{
+  "name": "nvim-beautiful-mermaid",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "beautiful-mermaid": "0.1.2"
+  },
+  "scripts": {
+    "bundle": "bun build scripts/vendor/entry.ts --target=node --format=cjs --outfile scripts/vendor/beautiful-mermaid.bundle.cjs --minify"
+  }
+}

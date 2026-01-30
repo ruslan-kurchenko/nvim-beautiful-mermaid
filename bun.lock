@@ -1,0 +1,19 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "nvim-beautiful-mermaid",
+      "devDependencies": {
+        "beautiful-mermaid": "0.1.2",
+      },
+    },
+  },
+  "packages": {
+    "@dagrejs/dagre": ["@dagrejs/dagre@1.1.8", "", { "dependencies": { "@dagrejs/graphlib": "2.2.4" } }, "sha512-5SEDlndt4W/LaVzPYJW+bSmSEZc9EzTf8rJ20WCKvjS5EAZAN0b+x0Yww7VMT4R3Wootkg+X9bUfUxazYw6Blw=="],
+
+    "@dagrejs/graphlib": ["@dagrejs/graphlib@2.2.4", "", {}, "sha512-mepCf/e9+SKYy1d02/UkvSy6+6MoyXhVxP8lLDfA7BPE1X1d4dR0sZznmbM8/XVJ1GPM+Svnx7Xj6ZweByWUkw=="],
+
+    "beautiful-mermaid": ["beautiful-mermaid@0.1.2", "", { "dependencies": { "@dagrejs/dagre": "^1.1.8" } }, "sha512-pTsXNdjmiZW0ITC2IlVt6YdQucA1ArhnXYnRJWGRnSuCIbypV0NbVgdZF1c2zh+S6H5GhgfFJE2YL6FN9en8Qg=="],
+  }
+}
