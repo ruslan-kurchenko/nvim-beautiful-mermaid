@@ -12,6 +12,19 @@ local state = {
   config = config.defaults(),
 }
 
+local function setup_highlights()
+  local function get_hl_fg(name)
+    local hl = vim.api.nvim_get_hl(0, { name = name, link = false })
+    return hl.fg and string.format("#%06x", hl.fg) or nil
+  end
+
+  local green = get_hl_fg("Directory") or get_hl_fg("NvimTreeFolderName") or "#509475"
+
+  vim.api.nvim_set_hl(0, "MermaidPreview", { fg = green, italic = true })
+  vim.api.nvim_set_hl(0, "MermaidError", { link = "ErrorMsg" })
+  vim.api.nvim_set_hl(0, "MermaidPlaceholder", { fg = green, italic = true })
+end
+
 function M.get_config(bufnr)
   return config.get(bufnr, state.config)
 end
@@ -103,6 +116,7 @@ end
 
 function M.setup(opts)
   state.config = config.normalize(opts or {})
+  setup_highlights()
   cache.clear()
   commands.setup(M)
   require("beautiful_mermaid.lsp").setup(M)

@@ -55,7 +55,7 @@ function M.show(block, output, cfg)
     local lines = vim.split(output, "\n", { plain = true })
     local virt_lines = {}
     for _, line in ipairs(lines) do
-      table.insert(virt_lines, { { line, "Comment" } })
+      table.insert(virt_lines, { { line, "MermaidPreview" } })
     end
     virt = virt_lines
   else
@@ -71,7 +71,7 @@ function M.show(block, output, cfg)
       if vim.fn.filereadable(paths.png) == 0 then
         local ok, err = rasterizer.rasterize(paths.svg, paths.png, cfg)
         if not ok then
-          virt = { { { "[mermaid error] " .. err, "ErrorMsg" } } }
+          virt = { { { "[mermaid error] " .. err, "MermaidError" } } }
         end
       end
       if vim.fn.filereadable(paths.png) == 1 then
@@ -83,14 +83,14 @@ function M.show(block, output, cfg)
         local padding = math.max(1, cfg.image.padding_rows)
         local blanks = {}
         for _ = 1, padding do
-          table.insert(blanks, { { "", "Comment" } })
+          table.insert(blanks, { { "", "MermaidPlaceholder" } })
         end
         virt = blanks
       end
     end
 
     if #virt == 0 then
-      virt = { { { placeholder(cfg), "Comment" } } }
+      virt = { { { placeholder(cfg), "MermaidPlaceholder" } } }
     end
   end
 
@@ -110,7 +110,7 @@ function M.show_error(block, message, cfg)
   local row = block.range.end_row
   M.clear(bufnr, block.range.start_row, block.range.end_row)
   vim.api.nvim_buf_set_extmark(bufnr, namespace, row, 0, {
-    virt_lines = { { { "[mermaid error] " .. msg, "ErrorMsg" } } },
+    virt_lines = { { { "[mermaid error] " .. msg, "MermaidError" } } },
     virt_lines_above = false,
     hl_mode = "combine",
   })
