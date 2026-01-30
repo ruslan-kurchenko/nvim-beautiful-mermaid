@@ -157,6 +157,22 @@ function M.clear_all()
   local bufnr = vim.api.nvim_get_current_buf()
   targets.clear(bufnr)
   M.preview_close()
+  M.split_close()
+end
+
+function M.split_open()
+  local split = require("beautiful_mermaid.targets.split")
+  split.open()
+end
+
+function M.split_close()
+  local split = require("beautiful_mermaid.targets.split")
+  split.close()
+end
+
+function M.split_toggle()
+  local split = require("beautiful_mermaid.targets.split")
+  split.toggle()
 end
 
 local function setup_keymaps(cfg)
@@ -170,6 +186,7 @@ local function setup_keymaps(cfg)
     render_all = "<leader>rR",
     preview = "<leader>rf",
     clear = "<leader>rc",
+    split = "<leader>rs",
   }
 
   local maps = vim.tbl_extend("force", defaults, keymaps)
@@ -186,6 +203,9 @@ local function setup_keymaps(cfg)
   end
   if maps.clear then
     vim.keymap.set("n", maps.clear, M.clear_all, vim.tbl_extend("force", opts, { desc = "Clear mermaid previews" }))
+  end
+  if maps.split then
+    vim.keymap.set("n", maps.split, M.split_toggle, vim.tbl_extend("force", opts, { desc = "Toggle split preview" }))
   end
 end
 

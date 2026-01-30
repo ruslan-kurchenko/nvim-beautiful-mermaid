@@ -71,6 +71,7 @@ local defaults = {
     render_all = "<leader>rR",
     preview = "<leader>rf",
     clear = "<leader>rc",
+    split = "<leader>rs",
   },
 }
 

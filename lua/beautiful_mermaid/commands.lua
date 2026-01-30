@@ -28,6 +28,18 @@ function M.setup(api)
   vim.api.nvim_create_user_command("MermaidExportAll", function(opts)
     api.export_all(opts.args)
   end, { nargs = "?", desc = "Export all mermaid blocks to files" })
+
+  vim.api.nvim_create_user_command("MermaidSplit", function()
+    api.split_open()
+  end, { desc = "Open split preview for live editing" })
+
+  vim.api.nvim_create_user_command("MermaidSplitClose", function()
+    api.split_close()
+  end, { desc = "Close split preview" })
+
+  vim.api.nvim_create_user_command("MermaidSplitToggle", function()
+    api.split_toggle()
+  end, { desc = "Toggle split preview" })
 end
 
 return M
