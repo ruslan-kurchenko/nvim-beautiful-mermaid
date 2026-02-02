@@ -226,6 +226,9 @@ function M.setup(opts)
         local theme = require("beautiful_mermaid.theme")
         theme.invalidate_cache()
         cache.clear()
+        -- Re-extract colors from new colorscheme
+        local new_colors = theme.extract_colors()
+        state.config.mermaid.options = vim.tbl_deep_extend("force", state.config.mermaid.options or {}, new_colors)
         -- Re-render visible markdown buffers
         vim.schedule(function()
           for _, win in ipairs(vim.api.nvim_list_wins()) do
