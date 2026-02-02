@@ -12,6 +12,32 @@ function M.is_tmux()
   return env("TMUX") ~= nil
 end
 
+local function detect_from_process_tree()
+  local handle = io.popen("pstree -s $$ 2>/dev/null")
+  if not handle then
+    return nil
+  end
+  local result = handle:read("*a")
+  handle:close()
+  if not result or result == "" then
+    return nil
+  end
+  result = result:lower()
+  if result:find("ghostty") then
+    return "ghostty"
+  end
+  if result:find("kitty") then
+    return "kitty"
+  end
+  if result:find("wezterm") then
+    return "wezterm"
+  end
+  if result:find("alacritty") then
+    return "alacritty"
+  end
+  return nil
+end
+
 function M.detect()
   local term = env("TERM") or ""
   local term_program = env("TERM_PROGRAM") or ""
@@ -28,6 +54,12 @@ function M.detect()
   if env("ALACRITTY_LOG") or term_program:lower() == "alacritty" or term == "alacritty" then
     return "alacritty"
   end
+
+  local from_tree = detect_from_process_tree()
+  if from_tree then
+    return from_tree
+  end
+
   return "unknown"
 end
 

@@ -34,7 +34,11 @@ local function extract_treesitter(bufnr, fence)
     return nil
   end
 
-  local tree = parser:parse()[1]
+  pcall(function()
+    parser:invalidate(true)
+  end)
+
+  local tree = parser:parse(true)[1]
   if not tree then
     return nil
   end

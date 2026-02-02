@@ -68,6 +68,9 @@ local defaults = {
     min_width = 40,
     min_height = 10,
   },
+  split = {
+    keep_last_preview = true,
+  },
   keymaps = {
     render = "<leader>rr",
     render_all = "<leader>rR",

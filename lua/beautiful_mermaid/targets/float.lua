@@ -20,7 +20,8 @@ local function next_generation(bufnr)
   return render_generation[bufnr]
 end
 
-local SCALE_FACTOR = 2
+local SCALE_FACTOR = 3
+local BASE_PIXEL_WIDTH = 1200
 
 local function cache_dir()
   local dir = vim.fn.stdpath("cache") .. "/beautiful_mermaid"
@@ -90,7 +91,7 @@ local function get_window_inner_size()
 end
 
 local function estimate_pixel_width(cell_width)
-  return cell_width * 10 * SCALE_FACTOR
+  return math.max(BASE_PIXEL_WIDTH, cell_width * 12 * SCALE_FACTOR)
 end
 
 local function setup_resize_autocmd()
@@ -167,17 +168,11 @@ local function render_image_in_float(png_path)
 
   clear_current_image()
 
-  local win_width, _ = get_window_inner_size()
-  if not win_width then
-    return
-  end
-
   image_backend.render(state.buf, 0, 0, png_path, {
     id = "mermaid-float-preview",
-    width = win_width,
     window = state.win,
     max_width_window_percentage = 100,
-    max_height_window_percentage = 100,
+    max_height_window_percentage = 95,
   })
 end
 

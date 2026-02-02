@@ -2,18 +2,38 @@ local M = {}
 
 local state = {
   images = {},
+  load_error = nil,
+  checked = false,
 }
 
 local function get_api()
-  local ok, api = pcall(require, "image")
-  if not ok then
-    return nil
+  if state.checked then
+    if state.load_error then
+      return nil, state.load_error
+    end
   end
-  return api
+
+  local ok, result = pcall(require, "image")
+  state.checked = true
+
+  if not ok then
+    state.load_error = tostring(result)
+    return nil, state.load_error
+  end
+
+  return result, nil
 end
 
 function M.is_available()
-  return get_api() ~= nil
+  local api, _ = get_api()
+  return api ~= nil
+end
+
+function M.get_load_error()
+  if not state.checked then
+    get_api()
+  end
+  return state.load_error
 end
 
 local function ensure_buf_state(bufnr)
@@ -24,9 +44,13 @@ local function ensure_buf_state(bufnr)
 end
 
 function M.render(bufnr, row, col, path, opts)
-  local api = get_api()
+  local api, load_err = get_api()
   if not api then
-    return nil, "image.nvim not available"
+    local msg = "image.nvim not available"
+    if load_err then
+      msg = msg .. ": " .. load_err
+    end
+    return nil, msg
   end
 
   local win = opts.window or vim.api.nvim_get_current_win()
@@ -34,26 +58,36 @@ function M.render(bufnr, row, col, path, opts)
   local id = opts.id
 
   if images[id] then
-    images[id]:clear()
+    pcall(function()
+      images[id]:clear()
+    end)
     images[id] = nil
   end
 
-  local image = api.from_file(path, {
-    id = id,
-    window = win,
-    buffer = bufnr,
-    inline = true,
-    with_virtual_padding = true,
-    x = col,
-    y = row,
-    width = opts.width,
-    height = opts.height,
-    max_width_window_percentage = opts.max_width_window_percentage,
-    max_height_window_percentage = opts.max_height_window_percentage,
-  })
-  image:render()
-  images[id] = image
-  return image, nil
+  local ok, result = pcall(function()
+    local image = api.from_file(path, {
+      id = id,
+      window = win,
+      buffer = bufnr,
+      inline = true,
+      with_virtual_padding = true,
+      x = col,
+      y = row,
+      width = opts.width,
+      height = opts.height,
+      max_width_window_percentage = opts.max_width_window_percentage,
+      max_height_window_percentage = opts.max_height_window_percentage,
+    })
+    image:render()
+    return image
+  end)
+
+  if not ok then
+    return nil, "image.nvim render failed: " .. tostring(result)
+  end
+
+  images[id] = result
+  return result, nil
 end
 
 function M.clear(bufnr, id)

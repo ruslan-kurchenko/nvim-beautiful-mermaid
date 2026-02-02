@@ -39,12 +39,16 @@ end
 
 local function can_render_image(cfg)
   if cfg.render.backend == "ascii" then
-    return false
+    return false, nil
   end
   if cfg.render.backend == "external" then
-    return false
+    return false, nil
   end
-  return image_backend.is_available()
+  local available = image_backend.is_available()
+  if not available then
+    return false, image_backend.get_load_error()
+  end
+  return true, nil
 end
 
 local function block_id(bufnr, start_row)
@@ -72,7 +76,8 @@ function M.show(block, output, cfg)
     end
     virt = virt_lines
   else
-    if can_render_image(cfg) then
+    local can_render, image_err = can_render_image(cfg)
+    if can_render then
       local paths = cache_paths(block, output)
       if not paths then
         virt = { { { placeholder(cfg), "MermaidPlaceholder" } } }
@@ -98,6 +103,8 @@ function M.show(block, output, cfg)
             id = id,
             width = cfg.image.max_width,
             height = cfg.image.max_height,
+            max_width_window_percentage = 80,
+            max_height_window_percentage = 60,
           })
           local padding = math.max(1, cfg.image.padding_rows)
           local blanks = {}
@@ -110,7 +117,11 @@ function M.show(block, output, cfg)
     end
 
     if #virt == 0 then
-      virt = { { { placeholder(cfg), "MermaidPlaceholder" } } }
+      if image_err then
+        virt = { { { "[mermaid] image.nvim: " .. image_err, "MermaidError" } } }
+      else
+        virt = { { { placeholder(cfg), "MermaidPlaceholder" } } }
+      end
     end
   end
 

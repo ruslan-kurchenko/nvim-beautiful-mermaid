@@ -16,6 +16,10 @@ local state = {
   current_size = nil,
   augroup = nil,
   debounce_timer = nil,
+  last_block_identity = nil,
+  last_rendered_png = nil,
+  force_update = false,
+  pending_text_change = false,
 }
 
 local render_generation = {}
@@ -25,8 +29,27 @@ local function next_generation(bufnr)
   return render_generation[bufnr]
 end
 
-local SCALE_FACTOR = 2
+local SCALE_FACTOR = 3
 local DEBOUNCE_MS = 500
+local BASE_PIXEL_WIDTH = 1200
+
+local function make_block_identity(block)
+  if not block then
+    return nil
+  end
+  return {
+    hash = block.hash,
+    start_row = block.range and block.range.start_row,
+    end_row = block.range and block.range.end_row,
+  }
+end
+
+local function same_block_identity(a, b)
+  if not a or not b then
+    return false
+  end
+  return a.hash == b.hash and a.start_row == b.start_row and a.end_row == b.end_row
+end
 
 local function cache_dir()
   local dir = vim.fn.stdpath("cache") .. "/beautiful_mermaid/split"
@@ -64,7 +87,7 @@ local function get_preview_inner_size()
 end
 
 local function estimate_pixel_width(cell_width)
-  return cell_width * 10 * SCALE_FACTOR
+  return math.max(BASE_PIXEL_WIDTH, cell_width * 12 * SCALE_FACTOR)
 end
 
 local function clear_preview_image()
@@ -84,18 +107,14 @@ local function render_image_in_split(png_path)
 
   clear_preview_image()
 
-  local win_width, _ = get_preview_inner_size()
-  if not win_width then
-    return
-  end
-
   image_backend.render(state.preview_buf, 0, 0, png_path, {
     id = "mermaid-split-preview",
-    width = win_width,
     window = state.preview_win,
     max_width_window_percentage = 100,
-    max_height_window_percentage = 100,
+    max_height_window_percentage = 95,
   })
+
+  state.last_rendered_png = png_path
 end
 
 local function ensure_png_for_size(output, cfg, pixel_width, callback)
@@ -232,6 +251,25 @@ local function update_preview()
     block.bufnr = state.source_buf
   end
 
+  local new_identity = make_block_identity(block)
+  local keep_last = cfg.split and cfg.split.keep_last_preview ~= false
+
+  if not state.force_update and same_block_identity(new_identity, state.last_block_identity) then
+    return
+  end
+
+  state.force_update = false
+
+  if not block then
+    if keep_last and state.last_rendered_png and vim.fn.filereadable(state.last_rendered_png) == 1 then
+      return
+    end
+    state.last_block_identity = nil
+    show_placeholder()
+    return
+  end
+
+  state.last_block_identity = new_identity
   render_block_in_split(block, cfg)
 end
 
@@ -243,8 +281,17 @@ local function debounced_update()
 
   state.debounce_timer = vim.fn.timer_start(DEBOUNCE_MS, function()
     state.debounce_timer = nil
+    if state.pending_text_change then
+      state.force_update = true
+      state.pending_text_change = false
+    end
     vim.schedule(update_preview)
   end)
+end
+
+local function debounced_update_forced()
+  state.pending_text_change = true
+  debounced_update()
 end
 
 local function setup_autocmds()
@@ -257,7 +304,7 @@ local function setup_autocmds()
   vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
     group = state.augroup,
     buffer = state.source_buf,
-    callback = debounced_update,
+    callback = debounced_update_forced,
   })
 
   vim.api.nvim_create_autocmd("CursorMoved", {
@@ -355,6 +402,10 @@ function M.close()
   state.preview_win = nil
   state.current_block = nil
   state.current_size = nil
+  state.last_block_identity = nil
+  state.last_rendered_png = nil
+  state.force_update = false
+  state.pending_text_change = false
 end
 
 function M.is_open()

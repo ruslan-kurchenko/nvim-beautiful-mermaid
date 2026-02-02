@@ -38,7 +38,12 @@ function M.check()
     if image_backend.is_available() then
       health.ok("image.nvim available for inline rendering")
     else
-      health.warn("image.nvim not available; inline svg will fall back to placeholder")
+      local load_err = image_backend.get_load_error and image_backend.get_load_error()
+      if load_err then
+        health.error("image.nvim failed to load: " .. load_err)
+      else
+        health.warn("image.nvim not available; inline svg will fall back to placeholder")
+      end
     end
     if rasterizer.is_available(cfg) then
       local rast_cmd = rasterizer.get_command(cfg)
