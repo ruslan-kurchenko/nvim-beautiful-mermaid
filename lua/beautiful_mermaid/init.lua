@@ -216,6 +216,29 @@ function M.setup(opts)
   setup_keymaps(state.config)
   cache_cleanup.cleanup(7)
   cache.clear()
+
+  -- Setup ColorScheme autocmd for theme = "nvim"
+  if state.config.mermaid.theme == "nvim" then
+    local theme_group = vim.api.nvim_create_augroup("BeautifulMermaidTheme", { clear = true })
+    vim.api.nvim_create_autocmd("ColorScheme", {
+      group = theme_group,
+      callback = function()
+        local theme = require("beautiful_mermaid.theme")
+        theme.invalidate_cache()
+        cache.clear()
+        -- Re-render visible markdown buffers
+        vim.schedule(function()
+          for _, win in ipairs(vim.api.nvim_list_wins()) do
+            local buf = vim.api.nvim_win_get_buf(win)
+            if vim.bo[buf].filetype == "markdown" then
+              M.render_all(buf)
+            end
+          end
+        end)
+      end,
+    })
+  end
+
   commands.setup(M)
   require("beautiful_mermaid.lsp").setup(M)
   if state.config.render.live then

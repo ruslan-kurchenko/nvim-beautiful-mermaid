@@ -97,11 +97,24 @@ function M.normalize(user_opts)
     cfg.render.target = "in_buffer"
   end
 
-  local formats = { svg = true, ascii = true }
-  if not formats[cfg.render.format] then
-    notify("beautiful_mermaid: invalid render.format, using svg")
-    cfg.render.format = "svg"
-  end
+   local formats = { svg = true, ascii = true }
+   if not formats[cfg.render.format] then
+     notify("beautiful_mermaid: invalid render.format, using svg")
+     cfg.render.format = "svg"
+   end
+
+   -- Integrate with theme.lua for "nvim" theme
+   if cfg.mermaid.theme == "nvim" then
+     local theme = require("beautiful_mermaid.theme")
+     local resolved_theme, resolved_options = theme.resolve("auto", cfg.mermaid.options)
+     if resolved_theme then
+       cfg.mermaid.theme = resolved_theme
+     end
+     -- User options override extracted colors (keep existing values)
+     if resolved_options then
+       cfg.mermaid.options = vim.tbl_deep_extend("keep", cfg.mermaid.options or {}, resolved_options)
+     end
+   end
 
   local backends = { auto = true, ascii = true, image = true, external = true }
   if not backends[cfg.render.backend] then

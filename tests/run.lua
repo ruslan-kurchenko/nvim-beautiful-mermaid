@@ -75,4 +75,72 @@ test_buffer_config_override()
 test_in_buffer_clear()
 test_export_path_builder()
 
+-- Theme integration tests
+local theme = require("beautiful_mermaid.theme")
+
+local function test_theme_matching()
+  assert_eq(theme.match_theme("tokyonight-storm"), "tokyo-night-storm", "tokyonight-storm mapping")
+  assert_eq(theme.match_theme("nord"), "nord", "nord mapping")
+  assert_eq(theme.match_theme("unknown-theme"), nil, "unknown theme returns nil")
+end
+
+local function test_color_extraction()
+  vim.cmd("colorscheme default")
+  theme.invalidate_cache()
+  local colors = theme.extract_colors()
+  assert_eq(type(colors.bg), "string", "bg is string")
+  assert_eq(colors.bg:sub(1, 1), "#", "bg starts with #")
+  assert_eq(type(colors.fg), "string", "fg is string")
+  assert_eq(type(colors.muted), "string", "muted is string")
+end
+
+local function test_theme_resolution()
+  vim.cmd("colorscheme default")
+  theme.invalidate_cache()
+  local resolved_theme, resolved_options = theme.resolve("nvim", {})
+  assert_eq(type(resolved_theme), "string", "resolved theme is string")
+  assert_eq(type(resolved_options), "table", "resolved options is table")
+end
+
+local function test_user_override()
+  vim.cmd("colorscheme default")
+  theme.invalidate_cache()
+  local resolved_theme, resolved_options = theme.resolve("dracula", {})
+  assert_eq(resolved_theme, "dracula", "explicit theme is preserved")
+  assert_eq(type(resolved_options), "table", "options table provided")
+end
+
+local function test_backward_compat()
+  local cfg = config.normalize({ mermaid = { theme = "dracula" } })
+  assert_eq(cfg.mermaid.theme, "dracula", "explicit theme unchanged")
+end
+
+local function test_cache_invalidation()
+  vim.cmd("colorscheme default")
+  theme.invalidate_cache()
+  local colors1 = theme.extract_colors()
+  local colors2 = theme.extract_colors()
+  assert_eq(colors1.bg, colors2.bg, "cached colors match")
+  theme.invalidate_cache()
+  local colors3 = theme.extract_colors()
+  assert_eq(colors1.bg, colors3.bg, "colors consistent after invalidation")
+end
+
+local function test_partial_theme_matching()
+  local tokyonight_match = theme.match_theme("tokyonight")
+  assert_eq(tokyonight_match ~= nil, true, "partial tokyonight match returns non-nil")
+  local catppuccin_match = theme.match_theme("catppuccin")
+  assert_eq(catppuccin_match ~= nil, true, "partial catppuccin match returns non-nil")
+  local valid_catppuccin = { ["catppuccin-mocha"] = true, ["catppuccin-latte"] = true }
+  assert_eq(valid_catppuccin[catppuccin_match] ~= nil, true, "catppuccin match is valid variant")
+end
+
+test_theme_matching()
+test_color_extraction()
+test_theme_resolution()
+test_user_override()
+test_backward_compat()
+test_cache_invalidation()
+test_partial_theme_matching()
+
 print("ok")
