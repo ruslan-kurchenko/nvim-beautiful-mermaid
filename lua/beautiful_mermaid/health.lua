@@ -65,21 +65,41 @@ function M.check()
     end
   end
 
-  if cfg.treesitter.enable then
-    if vim.treesitter and vim.treesitter.get_parser then
-      health.ok("treesitter available")
-    else
-      health.warn("treesitter not available, falling back to regex")
-    end
-    if vim.treesitter and vim.treesitter.language and vim.treesitter.language.require_language then
-      local ok_lang = pcall(vim.treesitter.language.require_language, "mermaid")
-      if ok_lang then
-        health.ok("treesitter mermaid language available")
-      else
-        health.warn("treesitter mermaid language not installed")
-      end
-    end
-  end
+   if cfg.treesitter.enable then
+     if vim.treesitter and vim.treesitter.get_parser then
+       health.ok("treesitter available")
+     else
+       health.warn("treesitter not available, falling back to regex")
+     end
+     if vim.treesitter and vim.treesitter.language and vim.treesitter.language.require_language then
+       local ok_lang = pcall(vim.treesitter.language.require_language, "mermaid")
+       if ok_lang then
+         health.ok("treesitter mermaid language available")
+       else
+         health.warn("treesitter mermaid language not installed")
+       end
+     end
+   end
+
+   if cfg.mermaid.theme == "nvim" then
+     local colors_name = vim.g.colors_name
+     if colors_name then
+       health.ok("colorscheme detected: " .. colors_name)
+       local ok, theme = pcall(require, "beautiful_mermaid.theme")
+       if ok and theme.match_theme then
+         local matched = theme.match_theme(colors_name)
+         if matched then
+           health.ok("matched to beautiful-mermaid theme: " .. matched)
+         else
+           health.info("no theme match, using color extraction")
+         end
+       else
+         health.info("theme module not available, using color extraction")
+       end
+     else
+       health.warn("no colorscheme set, using fallback colors")
+     end
+   end
 end
 
 return M
